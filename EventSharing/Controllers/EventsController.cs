@@ -1,9 +1,4 @@
-﻿//using System;
-//using System.Collections.Generic;
-//using System.Linq;
-//using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-//using Microsoft.AspNetCore.Mvc.Rendering;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using EventSharing.Data;
 using EventSharing.Models;
@@ -19,51 +14,67 @@ namespace EventSharing.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IMapper _mapper;
-        private readonly UserManager<IdentityUser> _userManager;    
+        private readonly UserManager<IdentityUser> _userManager;
 
-        public EventsController(ApplicationDbContext context, IMapper mapper, UserManager<IdentityUser> userManager)   
+        public EventsController(ApplicationDbContext context, IMapper mapper, UserManager<IdentityUser> userManager)
         {
             _context = context;
             _mapper = mapper;
             _userManager = userManager;
         }
 
+        // POST: Events/Register
+        [HttpPost]
+        [Authorize(Roles = "Admin, Organizer, Participant")]
+        public async Task<IActionResult> Register(int eventId)
+        {
+            var user = await _context.Set<User>().FirstOrDefaultAsync(u => u.Email == User.Identity.Name);
+            var @event = await _context.Events.Include(e => e.Participants).FirstOrDefaultAsync(e => e.Id == eventId);
+
+            if (@event == null)
+            {
+                ModelState.AddModelError("", "L'événement est inexistant.");
+                return View("Details", _mapper.Map<EventViewModel>(@event)); 
+            }
+            if (@event.Participants.Count >= @event.Capacity)
+            {
+                ModelState.AddModelError("", "L'événement est complet.");
+                return View("Details", _mapper.Map<EventViewModel>(@event));
+            }
+            if (user == null)
+            {
+                ModelState.AddModelError("", "Utilisateur introuvable.");
+                return View("Details", _mapper.Map<EventViewModel>(@event));
+            }
+            if (@event.Participants.Any(p => p.Id == user.Id))
+            {
+                ModelState.AddModelError("", "Vous êtes déjà inscrit à cet événement.");
+                return View("Details", _mapper.Map<EventViewModel>(@event));
+            }
+
+            @event.Participants.Add(user);
+            await _context.SaveChangesAsync();
+
+            return RedirectToAction("Details", new { id = eventId });
+        }
+
         // GET: Events
-        [Authorize(Roles = "Admin, Organizer")]
+        [Authorize(Roles = "Admin, Organizer, Participant")]
         public async Task<IActionResult> Index()
         {
-            // Ensure _context.Events is not null before calling ToListAsync
-            //if (_context.Events == null)
-            //{
-            //    return Problem("Entity set 'ApplicationDbContext.Events' is null.");
-            //}
-
             List<Event> events;
-            var currentUser = await _userManager.GetUserAsync(User);
-            bool isOrganizer = await _userManager.IsInRoleAsync(currentUser, "Organizer");
-
-            if (isOrganizer)
-            {
-                events = await _context.Events
-                    .Include(e => e.Category)
-                    .Where(e => e.Creator.Email.Equals(currentUser.Email))
-                    .ToListAsync();
-            }
-            else
-            {
-                events = await _context.Events
+            events = await _context.Events
                     .Include(e => e.Category)
                     .ToListAsync();
-            }
 
-            return _context.Events != null ? 
+            return _context.Events != null ?
                 View(_mapper.Map<List<EventViewModel>>(events)) :
                 Problem("Entity set 'ApplicationDbContext.Events' is null.");
         }
 
-        // GET: Events/Details/5
-        [Authorize(Roles = "Admin, Organizer")]
-        public async Task<IActionResult> Details(int? id) 
+        // GET: Events/Details
+        [Authorize(Roles = "Admin, Organizer, Participant")]
+        public async Task<IActionResult> Details(int? id)
         {
             if (id == null)
             {
@@ -76,12 +87,13 @@ namespace EventSharing.Controllers
 
             var eventVm = _mapper.Map<EventViewModel>(await _context.Events
                 .Include(e => e.Category)
+                .Include(e => e.Participants)
+                .Include(e => e.Creator)
                 .FirstOrDefaultAsync(m => m.Id == id));
             if (eventVm == null)
             {
                 return NotFound();
             }
-
             return View(eventVm);
         }
 
@@ -97,29 +109,32 @@ namespace EventSharing.Controllers
         }
 
         // POST: Events/Create
-        // To protect from overposting attacks, enable the specific properties you want to bind to.
-        // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [Authorize(Roles = "Admin, Organizer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("Id,Name,Description,StartDate,EndDate, CategoryId")] EventViewModel eventVm)
+        public async Task<IActionResult> Create([Bind("Id,Name,Description,StartDate,EndDate,Capacity,CategoryId")] EventViewModel eventVm)
         {
-            if (ModelState.IsValid)
+            if (!ModelState.IsValid)
             {
-                var @event = _mapper.Map<Event>(eventVm);
-                @event.Category = _context.Categories
-                    .FirstOrDefault(c => c.Id.Equals(eventVm.CategoryId));
-                @event.Creator = _context.Set<User>()
-                    .FirstOrDefault(o=>o.Email.Equals(User.FindFirstValue(ClaimTypes.Email)));
-                _context.Add(@event);
-                await _context.SaveChangesAsync();
-                return RedirectToAction(nameof(Index));
+                eventVm.CategoriesVm = _mapper.Map<List<CategoryViewModel>>(_context.Categories.ToList());
+                return View(eventVm);
             }
-            eventVm.CategoriesVm = _mapper.Map<List<CategoryViewModel>>(_context.Categories.ToList());
-            return View(eventVm);
+
+            eventVm.CategoryName = _context.Categories.FirstOrDefault(c => c.Id == eventVm.CategoryId)?.Name;
+
+            var @event = _mapper.Map<Event>(eventVm);
+            @event.Category = _context.Categories
+                .FirstOrDefault(c => c.Id.Equals(eventVm.CategoryId));
+            @event.Creator = _context.Set<User>()
+                .FirstOrDefault(o => o.Email.Equals(User.FindFirstValue(ClaimTypes.Email)));
+            @event.CreatorId = User.FindFirstValue(ClaimTypes.NameIdentifier); 
+
+            _context.Add(@event);
+            await _context.SaveChangesAsync();
+
+            return RedirectToAction(nameof(Index));
         }
 
-        // GET: Events/Edit/5
         [Authorize(Roles = "Admin, Organizer")]
         public async Task<IActionResult> Edit(int? id)
         {
@@ -127,43 +142,66 @@ namespace EventSharing.Controllers
             {
                 return NotFound();
             }
-            if (_context.Events == null)
-            {
-                return Problem("Entity set 'ApplicationDbContext.Events' is null.");
-            }
 
-            var eventVm = _mapper.Map<EventViewModel>(await _context.Events
-                .Include(e => e.Category)
-                .FirstOrDefaultAsync(m => m.Id == id));
-            if (eventVm == null)
+            var @event = await _context.Events.Include(e => e.Category)
+                                              .FirstOrDefaultAsync(m => m.Id == id);
+
+            if (@event == null)
             {
                 return NotFound();
             }
+
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!User.IsInRole("Admin") && @event.CreatorId != currentUserId)
+            {
+                return Forbid(); 
+            }
+
+            var eventVm = _mapper.Map<EventViewModel>(@event);
             eventVm.CategoriesVm = _mapper.Map<List<CategoryViewModel>>(_context.Categories.ToList());
+
             return View(eventVm);
         }
 
-        // POST: Events/Edit/5
-        // To protect from overposting attacks, enable the specific properties you want to bind to.
-        // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
+
         [Authorize(Roles = "Admin, Organizer")]
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("Id,Name,Description,StartDate,EndDate, CategoryId")] EventViewModel eventVm)
+        public async Task<IActionResult> Edit(int id, [Bind("Id,Name,Description,StartDate,EndDate,Capacity,CategoryId,CreatorId")] EventViewModel eventVm)
         {
             if (id != eventVm.Id)
             {
                 return NotFound();
             }
 
+            var @event = await _context.Events
+                .FirstOrDefaultAsync(e => e.Id == id);
+
+            if (@event == null)
+            {
+                return NotFound();
+            }
+
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (!User.IsInRole("Admin") && @event.CreatorId != currentUserId)
+            {
+                return Forbid(); 
+            }
+
             if (ModelState.IsValid)
             {
                 try
                 {
-                    var @event = _mapper.Map<Event>(eventVm);
-                    @event.Category = _context.Categories
-                        .FirstOrDefault(c => c.Id.Equals(eventVm.CategoryId));
+                    _mapper.Map(eventVm, @event);
+                    @event.Category = _context.Categories.FirstOrDefault(c => c.Id.Equals(eventVm.CategoryId));
                     _context.Update(@event);
+
+                    if (string.IsNullOrEmpty(@event.CreatorId))
+                    {
+                        @event.CreatorId = _context.Entry(@event).Property(e => e.CreatorId).OriginalValue?.ToString();
+                    }
+
                     await _context.SaveChangesAsync();
                 }
                 catch (DbUpdateConcurrencyException)
@@ -179,9 +217,11 @@ namespace EventSharing.Controllers
                 }
                 return RedirectToAction(nameof(Index));
             }
+
             eventVm.CategoriesVm = _mapper.Map<List<CategoryViewModel>>(_context.Categories.ToList());
             return View(eventVm);
         }
+
 
         // GET: Events/Delete/5
         [Authorize(Roles = "Admin, Organizer")]
@@ -198,35 +238,56 @@ namespace EventSharing.Controllers
 
             var @event = await _context.Events
                 .Include(e => e.Category)
+                .Include(e => e.Creator)
                 .FirstOrDefaultAsync(m => m.Id == id);
+
             if (@event == null)
             {
                 return NotFound();
             }
 
+            var currentUserEmail = User.FindFirstValue(ClaimTypes.Email);
+
+            if (!User.IsInRole("Admin") && (@event.Creator?.Email != currentUserEmail))
+            {
+                return Forbid();
+            }
+
             return View(_mapper.Map<EventViewModel>(@event));
         }
 
-        // POST: Events/Delete/5
+
         [Authorize(Roles = "Admin, Organizer")]
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
-            if (_context.Events == null)
+            var @event = await _context.Events.Include(e => e.Creator)
+                                               .FirstOrDefaultAsync(e => e.Id == id);
+
+            if (@event == null)
             {
-                return Problem("Entity set 'ApplicationDbContext.Events' is null.");
+                return NotFound();
             }
 
-            var @event = await _context.Events.FindAsync(id);
-            if (@event != null)
+            if (@event.Creator == null)
             {
-                _context.Events.Remove(@event);
+                return Problem("Impossible de vérifier le créateur de l'événement.");
             }
 
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (!User.IsInRole("Admin") && (@event.CreatorId != currentUserId))
+            {
+                return Forbid(); 
+            }
+
+            _context.Events.Remove(@event);
             await _context.SaveChangesAsync();
+
             return RedirectToAction(nameof(Index));
         }
+
 
         private bool EventExists(int id)
         {
@@ -234,3 +295,4 @@ namespace EventSharing.Controllers
         }
     }
 }
+
