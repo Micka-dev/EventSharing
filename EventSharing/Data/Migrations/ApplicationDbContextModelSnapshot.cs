@@ -52,6 +52,9 @@ namespace EventSharing.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("Capacity")
+                        .HasColumnType("int");
+
                     b.Property<int?>("CategoryId")
                         .HasColumnType("int");
 
@@ -62,7 +65,7 @@ namespace EventSharing.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("EndDate")
+                    b.Property<DateTime?>("EndDate")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Name")
@@ -70,7 +73,7 @@ namespace EventSharing.Data.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
-                    b.Property<DateTime>("StartDate")
+                    b.Property<DateTime?>("StartDate")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
@@ -326,7 +329,7 @@ namespace EventSharing.Data.Migrations
                         .HasForeignKey("CategoryId");
 
                     b.HasOne("EventSharing.Models.User", "Creator")
-                        .WithMany("CeatedEvents")
+                        .WithMany("CreatedEvents")
                         .HasForeignKey("CreatorId");
 
                     b.Navigation("Category");
@@ -407,7 +410,7 @@ namespace EventSharing.Data.Migrations
 
             modelBuilder.Entity("EventSharing.Models.User", b =>
                 {
-                    b.Navigation("CeatedEvents");
+                    b.Navigation("CreatedEvents");
                 });
 #pragma warning restore 612, 618
         }
