@@ -1,4 +1,8 @@
-﻿@model IEnumerable<EventSharing.ViewModels.EventViewModel>
+﻿@using System.Security.Claims
+
+
+@model IEnumerable<EventSharing.ViewModels.EventViewModel>
+
 
 @{
     ViewData["Title"] = "Index";
@@ -6,9 +10,15 @@
 
 <h1>Index</h1>
 
-<p>
+@if (User.IsInRole("Admin") || User.IsInRole("Organizer"))
+{
+    <p>
     <a asp-action="Create">Create New</a>
-</p>
+    </p>
+}
+
+@if (User.IsInRole("Admin") || User.IsInRole("Organizer") || User.IsInRole("Participant"))
+{
 <table class="table">
     <thead>
         <tr>
@@ -49,11 +59,16 @@
                 @Html.DisplayFor(modelItem => item.CategoryName)
             </td>
             <td>
-                <a asp-action="Edit" asp-route-id="@item.Id">Edit</a> |
-                <a asp-action="Details" asp-route-id="@item.Id">Details</a> |
-                <a asp-action="Delete" asp-route-id="@item.Id">Delete</a>
+                <a asp-action="Details" asp-route-id="@item.Id">Details</a>
+
+            @if (User.IsInRole("Admin") || (User.IsInRole("Organizer") && item.CreatorId != null && item.CreatorId == User.FindFirst(ClaimTypes.NameIdentifier)?.Value))
+                {
+                    <a asp-action="Edit" asp-route-id="@item.Id">Edit</a>
+                    <a asp-action="Delete" asp-route-id="@item.Id">Delete</a>
+                }
             </td>
         </tr>
 }
     </tbody>
 </table>
+}
