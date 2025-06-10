@@ -18,12 +18,13 @@ namespace EventSharing.Data
         {
             base.OnModelCreating(builder);
             builder.Entity<User>()
-                .HasMany(u => u.CeatedEvents)
+                .HasMany(u => u.CreatedEvents)
                 .WithOne(e => e.Creator);
 
             builder.Entity<Event>()
                 .HasOne(e => e.Creator)
-                .WithMany(u => u.CeatedEvents);
+                .WithMany(u => u.CreatedEvents)
+                .HasForeignKey(e => e.CreatorId);
 
 
             builder.Entity<Category>()
