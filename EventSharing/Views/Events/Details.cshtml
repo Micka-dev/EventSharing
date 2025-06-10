@@ -7,9 +7,51 @@
 <h1>Details</h1>
 
 <div>
-    <h4>Event</h4>
+    <h4>@Html.DisplayFor(model => model.Name)</h4>
     <hr />
+    
+    @if (!ViewData.ModelState.IsValid)
+    {
+        <div class="alert alert-danger">
+            @foreach (var error in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+            {
+                <p>@error.ErrorMessage</p>
+            }
+        </div>
+    }
+
+    <h5>Places disponibles : @(Model.Capacity - (Model.ParticipantDetails != null ? Model.ParticipantDetails.Count : 0))</h5>
+
+    @if (Model.ParticipantDetails?.Count < Model.Capacity)
+    {
+        <form asp-action="Register" method="post">
+            <input type="hidden" name="eventId" value="@Model.Id" />
+            <button type="submit" class="btn btn-success">S'inscrire</button>
+        </form>
+    }
+    else
+    {
+        <p class="text-danger">L'événement est complet.</p>
+    }
+
+    @if (User.IsInRole("Admin") || User.IsInRole("Organizer"))
+    {
+    <h3>Participants</h3>
+    <ul>
+            @foreach (var participant in Model.ParticipantDetails)
+        {
+            <li>@participant</li>
+        }
+    </ul>
+    }
+
     <dl class="row">
+        <dt class = "col-sm-2">
+            @Html.DisplayNameFor(model => model.Capacity)
+        </dt>
+        <dd class = "col-sm-10">
+            @Html.DisplayFor(model => model.Capacity)
+        </dd>
         <dt class = "col-sm-2">
             @Html.DisplayNameFor(model => model.Name)
         </dt>
@@ -43,6 +85,10 @@
     </dl>
 </div>
 <div>
-    <a asp-action="Edit" asp-route-id="@Model?.Id">Edit</a> |
+    @if (User.IsInRole("Admin") || (User.IsInRole("Organizer") && Model.Creator?.Email == User.Identity.Name))
+    {
+            <a asp-action="Edit" asp-route-id="@Model?.Id">Edit</a>
+    }
+                
     <a asp-action="Index">Back to List</a>
 </div>
