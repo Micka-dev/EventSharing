@@ -6,7 +6,7 @@ namespace EventSharing.Models
     {
         public string? Name { get; set; }
         public List<Event>? JoinedEvents { get; set; }
-        public List<Event>? CeatedEvents { get; set; }
+        public List<Event>? CreatedEvents { get; set; }
 
     }
 }
